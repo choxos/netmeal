@@ -1,0 +1,12 @@
+name: netmetal
+title: netmetal
+username: choxos
+account: choxos
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 12405182
+bundleId: 8943599
+url: https://choxos.shinyapps.io/netmetal/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
