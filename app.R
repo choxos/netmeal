@@ -409,11 +409,12 @@ server = function(input, output, session) {
                                 updateTextInput(session, paste0("arm", i, "_", j), value = paste("Arm", j))
                                 
                                 if(j %in% arms_to_fill) {
-                                        updateNumericInput(session, paste0("n", i, "_", j), value = round(runif(1, 50, 200)))
+                                        n = round(runif(1, 50, 200))
+                                        updateNumericInput(session, paste0("n", i, "_", j), value = n)
                                         
                                         if(input$dataType == "Binary") {
-                                                n = as.numeric(input[[paste0("n", i, "_", j)]])
-                                                updateNumericInput(session, paste0("event", i, "_", j), value = round(runif(1, 0, n)))
+                                                event = round(runif(1, 0, n))
+                                                updateNumericInput(session, paste0("event", i, "_", j), value = event)
                                         } else {
                                                 updateNumericInput(session, paste0("mean", i, "_", j), value = round(rnorm(1, 50, 10), 1))
                                                 updateNumericInput(session, paste0("sd", i, "_", j), value = round(runif(1, 5, 15), 1))
@@ -440,38 +441,49 @@ server = function(input, output, session) {
                 for(i in 1:input$nStudies) {
                         studyLabel = input[[paste0("studyLabel_", i)]]
                         for(j in 1:input$nArms) {
-                                row = data.frame(
-                                        study = studyLabel,
-                                        t = input[[paste0("arm", i, "_", j)]],
-                                        n = as.numeric(input[[paste0("n", i, "_", j)]])
-                                )
-                                
-                                if (input$dataType == "Binary") {
-                                        row$event = as.numeric(input[[paste0("event", i, "_", j)]])
-                                } else {
-                                        row$y = as.numeric(input[[paste0("mean", i, "_", j)]])
-                                        row$sd = as.numeric(input[[paste0("sd", i, "_", j)]])
+                                n = as.numeric(input[[paste0("n", i, "_", j)]])
+                                if (!is.na(n)) {
+                                        row = data.frame(
+                                                study = studyLabel,
+                                                t = input[[paste0("arm", i, "_", j)]],
+                                                n = n
+                                        )
+                                        
+                                        if (input$dataType == "Binary") {
+                                                row$event = as.numeric(input[[paste0("event", i, "_", j)]])
+                                        } else {
+                                                row$y = as.numeric(input[[paste0("mean", i, "_", j)]])
+                                                row$sd = as.numeric(input[[paste0("sd", i, "_", j)]])
+                                        }
+                                        
+                                        data = rbind(data, row)
                                 }
-                                
-                                data = rbind(data, row)
                         }
                 }
                 
                 # Remove any rows with NA values
                 data = na.omit(data)
                 
+                if (nrow(data) == 0) {
+                        showNotification("No valid data to save. Please check your inputs.", type = "error")
+                        return()
+                }
+                
                 rv$data = data
                 
                 # Prepare pairwise data
-                if (input$dataType == "Binary") {
-                        rv$p_data = pairwise(treat = t, event = event, n = n, studlab = study, 
-                                              data = data, sm = input$sm)
-                } else {
-                        rv$p_data = pairwise(treat = t, mean = y, sd = sd, n = n, studlab = study, 
-                                              data = data, sm = input$sm)
-                }
-                
-                showNotification("Manual data saved successfully!", type = "message")
+                tryCatch({
+                        if (input$dataType == "Binary") {
+                                rv$p_data = pairwise(treat = t, event = event, n = n, studlab = study, 
+                                                     data = data, sm = input$sm)
+                        } else {
+                                rv$p_data = pairwise(treat = t, mean = y, sd = sd, n = n, studlab = study, 
+                                                     data = data, sm = input$sm)
+                        }
+                        showNotification("Manual data saved successfully!", type = "message")
+                }, error = function(e) {
+                        showNotification(paste("Error saving data:", e$message), type = "error")
+                })
         })
         
         # Read CSV file
