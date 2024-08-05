@@ -7,6 +7,12 @@ library(colourpicker)
 library(dmetar)
 library(robvis)
 library(gridExtra)
+library(grid)
+library(rjags)
+library(coda)
+library(igraph)
+library(ggplot2)
+library(bnma)
 
 ui = dashboardPage(
         dashboardHeader(title = "NetMetal"),
@@ -74,9 +80,18 @@ ui = dashboardPage(
                                         )
                                 ),
                                 fluidRow(
-                                        column(12, 
-                                               actionButton("analyzeBtn", "Analyze Data", icon("play"), 
+                                        column(6,
+                                               numericInput("niter", "Number of Iterations (Bayesian)", value = 5000, min = 1000),
+                                        )
+                                ),
+                                fluidRow(
+                                        column(6, 
+                                               actionButton("analyzeBtn", "Analyze Data (Frequentist)", icon("play"), 
                                                             style = "color: #fff; background-color: #337ab7; border-color: #2e6da4")
+                                        ),
+                                        column(6,
+                                               actionButton("analyzeBayesianBtn", "Analyze Data (Bayesian)", icon("play"), 
+                                                            style = "color: #fff; background-color: #5cb85c; border-color: #4cae4c")
                                         )
                                 )
                         ),
@@ -85,12 +100,20 @@ ui = dashboardPage(
                         tabItem(tabName = "networkPlot",
                                 fluidRow(
                                         box(
-                                                title = "Network Plot",
+                                                title = "Frequentist Network Plot",
                                                 status = "primary",
                                                 solidHeader = TRUE,
                                                 width = 12,
-                                                plotOutput("networkPlot", height = "600px")
-                                                
+                                                plotOutput("networkPlot", height = "600px", width = "600px")
+                                        )
+                                ),
+                                fluidRow(
+                                        box(
+                                                title = "Bayesian Network Plot",
+                                                status = "success",
+                                                solidHeader = TRUE,
+                                                width = 12,
+                                                plotOutput("bayesianNetworkPlot", height = "600px", width = "600px")
                                         )
                                 )
                         ),
@@ -98,19 +121,27 @@ ui = dashboardPage(
                         # Tab 4: Forest Plots
                         tabItem(tabName = "forestPlots",
                                 tabsetPanel(
-                                        tabPanel("Fixed Effects", 
-                                                 plotOutput("forestFixedPlot", height = "800px"),
-                                                 downloadButton("downloadForestFixed", "Download Plot")
-                                        ),
-                                        tabPanel("Random Effects", 
-                                                 plotOutput("forestRandomPlot", height = "800px"),
-                                                 downloadButton("downloadForestRandom", "Download Plot")
-                                        ),
-                                        tabPanel("Summary", 
-                                                 verbatimTextOutput("forestSummary")
-                                        ),
-                                        tabPanel("Data Table", 
-                                                 DTOutput("forestDataTable")
+                                        tabsetPanel(
+                                                tabPanel("Fixed Effects", 
+                                                         h3("Frequentist"),
+                                                         plotOutput("forestFixedPlot", height = "600px", width = "600px"),
+                                                         h3("Bayesian"),
+                                                         plotOutput("bayesianForestPlotFE", height = "600px", width = "600px"),
+                                                         downloadButton("downloadForestFixed", "Download Plot")
+                                                ),
+                                                tabPanel("Random Effects", 
+                                                         h3("Frequentist"),
+                                                         plotOutput("forestRandomPlot", height = "600px", width = "600px"),
+                                                         h3("Bayesian"),
+                                                         plotOutput("bayesianForestPlotRE", height = "600px", width = "600px"),
+                                                         downloadButton("downloadForestRandom", "Download Plot")
+                                                ),
+                                                tabPanel("Summary", 
+                                                         verbatimTextOutput("forestSummary")
+                                                ),
+                                                tabPanel("Data Table", 
+                                                         DTOutput("forestDataTable")
+                                                )
                                         )
                                 )
                         ),
@@ -118,13 +149,21 @@ ui = dashboardPage(
                         # Tab 5: Ranking
                         tabItem(tabName = "ranking",
                                 tabsetPanel(
-                                        tabPanel("Rankogram (Fixed)", 
-                                                 plotOutput("rankogramFixed", height = "600px"),
-                                                 downloadButton("downloadRankogramFixed", "Download Fixed Effects Rankogram")
-                                        ),
-                                        tabPanel("Rankogram (Random)", 
-                                                 plotOutput("rankogramRandom", height = "600px"),
-                                                 downloadButton("downloadRankogramRandom", "Download Random Effects Rankogram")
+                                        tabsetPanel(
+                                                tabPanel("Rankogram (Fixed)", 
+                                                         h3("Frequentist"),
+                                                         plotOutput("rankogramFixed", height = "600px", width = "600px"),
+                                                         h3("Bayesian"),
+                                                         plotOutput("bayesianRankogramFE", height = "600px", width = "600px"),
+                                                         downloadButton("downloadRankogramFixed", "Download Fixed Effects Rankogram")
+                                                ),
+                                                tabPanel("Rankogram (Random)", 
+                                                         h3("Frequentist"),
+                                                         plotOutput("rankogramRandom", height = "600px", width = "600px"),
+                                                         h3("Bayesian"),
+                                                         plotOutput("bayesianRankogramRE", height = "600px", width = "600px"),
+                                                         downloadButton("downloadRankogramRandom", "Download Random Effects Rankogram")
+                                                )
                                         )
                                 )
                         ),
@@ -133,12 +172,18 @@ ui = dashboardPage(
                         tabItem(tabName = "leagueTable",
                                 tabsetPanel(
                                         tabPanel("League Table (Fixed)", 
+                                                 h3("Frequentist"),
                                                  DTOutput("leagueTableFixed"),
-                                                 downloadButton("downloadLeagueTable", "Download Table")
+                                                 h3("Bayesian"),
+                                                 DTOutput("bayesianLeagueTableFE"),
+                                                 downloadButton("downloadLeagueTableFixed", "Download Fixed Effects Table")
                                         ),
                                         tabPanel("League Table (Random)", 
+                                                 h3("Frequentist"),
                                                  DTOutput("leagueTableRandom"),
-                                                 downloadButton("downloadLeagueTable", "Download Table")
+                                                 h3("Bayesian"),
+                                                 DTOutput("bayesianLeagueTableRE"),
+                                                 downloadButton("downloadLeagueTableRandom", "Download Random Effects Table")
                                         )
                                 )
                         ),
@@ -147,12 +192,18 @@ ui = dashboardPage(
                         tabItem(tabName = "heatPlot",
                                 tabsetPanel(
                                         tabPanel("Net Heat Plot (Fixed)", 
+                                                 h3("Frequentist"),
                                                  plotOutput("netHeatFixed", height = "600px"),
-                                                 downloadButton("downloadNetHeat", "Download Plot")
-                                                 ),
+                                                 h3("Bayesian"),
+                                                 plotOutput("bayesianNetHeatFE", height = "600px"),
+                                                 downloadButton("downloadNetHeatFixed", "Download Fixed Effects Plot")
+                                        ),
                                         tabPanel("Net Heat Plot (Random)", 
+                                                 h3("Frequentist"),
                                                  plotOutput("netHeatRandom", height = "600px"),
-                                                 downloadButton("downloadNetHeat", "Download Plot")
+                                                 h3("Bayesian"),
+                                                 plotOutput("bayesianNetHeatRE", height = "600px"),
+                                                 downloadButton("downloadNetHeatRandom", "Download Random Effects Plot")
                                         )
                                 )
                         ),
@@ -189,8 +240,8 @@ ui = dashboardPage(
                                         )
                                 )
                         ),
-                                
-                                # Tab 10: GRADE
+                        
+                        # Tab 10: GRADE
                         tabItem(tabName = "grade",
                                 fluidRow(
                                         box(
@@ -239,8 +290,8 @@ ui = dashboardPage(
                                         )
                                 )
                         ),
-                                
-                                # Tab 11: Imputation
+                        
+                        # Tab 11: Imputation
                         tabItem(tabName = "imputation",
                                 tabBox(
                                         title = "Imputation Circumstances",
@@ -508,19 +559,11 @@ server = function(input, output, session) {
         # Update reference treatment choices
         observe({
                 req(rv$data)
-                choices = if ("t" %in% names(rv$data)) {
-                        unique(rv$data$t)
-                } else {
-                        unique(c(rv$data$t1, rv$data$t2, rv$data$t3))
-                }
+                choices = unique(rv$data$t)
                 updateSelectInput(session, "reference", choices = choices)
         })
         
-        # After analysis, update again with the actual treatments used in the model
-        observeEvent(rv$nma_results, {
-                req(rv$nma_results)
-                updateSelectInput(session, "reference", choices = rv$nma_results$trts)
-        })
+        
         
         # Analyze Data
         observeEvent(input$analyzeBtn, {
@@ -532,27 +575,27 @@ server = function(input, output, session) {
                                 # Ensure logical arguments are not NULL
                                 common = ifelse(is.null(input$common), FALSE, as.logical(input$common))
                                 random = ifelse(is.null(input$random), TRUE, as.logical(input$random))
-                                small.values = ifelse(is.null(input$small), "bad", input$small)
+                                small.values = input$small
                                 
                                 # Perform network meta-analysis
                                 # Random
                                 rv$nma_results_random = netmeta(rv$p_data,
-                                                          sm = input$sm,
-                                                          common = F,
-                                                          random = T,
-                                                          reference.group = input$reference,
-                                                          small.values = small.values,
-                                                          method.tau = input$tau,
-                                                          tol.multiarm = as.numeric(input$tol))
+                                                                sm = input$sm,
+                                                                common = F,
+                                                                random = T,
+                                                                reference.group = input$reference,
+                                                                small.values = small.values,
+                                                                method.tau = input$tau,
+                                                                tol.multiarm = as.numeric(input$tol))
                                 
                                 # Fixed
                                 rv$nma_results_fixed = netmeta(rv$p_data,
-                                                                 sm = input$sm,
-                                                                 common = T,
-                                                                 random = F,
-                                                                 reference.group = input$reference,
-                                                                 small.values = small.values,
-                                                                 tol.multiarm = as.numeric(input$tol))
+                                                               sm = input$sm,
+                                                               common = T,
+                                                               random = F,
+                                                               reference.group = input$reference,
+                                                               small.values = small.values,
+                                                               tol.multiarm = as.numeric(input$tol))
                                 
                                 incProgress(1)
                                 
@@ -573,7 +616,6 @@ server = function(input, output, session) {
                         })
                 })
         })
-        
         
         # Network Plot
         output$networkPlot = renderPlot({
@@ -622,10 +664,15 @@ server = function(input, output, session) {
         
         # Rankogram
         # Fixed
+        set.seed(1280)
         output$rankogramFixed = renderPlot({
+                small.values = ifelse(input$small == "bad", "desirable", "undesirable")
                 req(rv$nma_results_fixed)
+                
                 tryCatch({
-                        rankingF = rankogram(rv$nma_results_fixed, nsim = 1000)
+                        rankingF = rankogram(rv$nma_results_fixed, 
+                                             nsim = 10000,
+                                             small.values = small.values)
                         plot(rankingF, type = "l")
                 }, error = function(e) {
                         print(paste("Error in rankogram:", e$message))
@@ -633,11 +680,14 @@ server = function(input, output, session) {
         })
         
         # Random
-        set.seed(1280)
         output$rankogramRandom = renderPlot({
                 req(rv$nma_results_random)
+                small.values = ifelse(input$small == "bad", "desirable", "undesirable")
+                
                 tryCatch({
-                        rankingR = rankogram(rv$nma_results_random, nsim = 1000)
+                        rankingR = rankogram(rv$nma_results_random, 
+                                             nsim = 10000,
+                                             small.values = small.values)
                         plot(rankingR, type = "l")
                 }, error = function(e) {
                         print(paste("Error in rankogram:", e$message))
@@ -648,8 +698,14 @@ server = function(input, output, session) {
         # Fixed
         output$leagueTableFixed = renderDT({
                 req(rv$nma_results_fixed)
+                trt_order = sort(unique(rv$data$t))
+                trt_order = c(input$reference, trt_order[trt_order != input$reference])
+                
                 tryCatch({
-                        league_tableF = netleague(rv$nma_results_fixed)
+                        league_tableF = netleague(rv$nma_results_fixed, 
+                                                  seq = trt_order,
+                                                  common = T,
+                                                  random = F)
                         datatable(as.data.frame(league_tableF$fixed))
                 }, error = function(e) {
                         print(paste("Error in league table:", e$message))
@@ -659,8 +715,14 @@ server = function(input, output, session) {
         # Random
         output$leagueTableRandom = renderDT({
                 req(rv$nma_results_random)
+                trt_order = sort(unique(rv$data$t))
+                trt_order = c(input$reference, trt_order[trt_order != input$reference])
+                
                 tryCatch({
-                        league_tableR = netleague(rv$nma_results_random)
+                        league_tableR = netleague(rv$nma_results_random, 
+                                                  seq = trt_order,
+                                                  common = F,
+                                                  random = T)
                         datatable(as.data.frame(league_tableR$random))
                 }, error = function(e) {
                         print(paste("Error in league table:", e$message))
@@ -699,6 +761,201 @@ server = function(input, output, session) {
                         print(paste("Error in evidence prop plot:", e$message))
                 })
         })
+        
+        
+        # Bayesian analysis
+        observeEvent(input$analyzeBayesianBtn, {
+                req(rv$p_data)
+                
+                withProgress(message = 'Analyzing data (Bayesian)...', value = 0, {
+                        tryCatch({
+                                
+                                trt_order = sort(unique(rv$data$t))
+                                trt_order = c(input$reference, trt_order[trt_order != input$reference])
+                                
+                                # Prepare data for JAGS
+                                if (input$dataType == "Binary") {  # Binary data
+                                        jags_data <- list(
+                                                Outcomes = rv$data$event,
+                                                N = rv$data$n,
+                                                Study = rv$data$study,
+                                                Treat = factor(rv$data$t),
+                                                trt_order = trt_order
+                                        )
+                                        jags_model_re <- with(jags_data, 
+                                                              network.data(Outcomes = Outcomes, 
+                                                                           Study = Study, 
+                                                                           Treat = Treat, 
+                                                                           N = N, 
+                                                                           Treat.order = trt_order,
+                                                                           response = "binomial", 
+                                                                           mean.d = 0.1, 
+                                                                           hy.prior = list("dhnorm", 0, 5), 
+                                                                           type = "random", 
+                                                                           rank.preference = ifelse(input$small == "bad", "lower", "higher")))
+                                        jags_model_fe <- with(jags_data, 
+                                                              network.data(Outcomes = Outcomes, 
+                                                                           Study = Study, 
+                                                                           Treat = Treat, 
+                                                                           N = N, 
+                                                                           Treat.order = trt_order,
+                                                                           response = "binomial", 
+                                                                           mean.d = 0.1, 
+                                                                           hy.prior = list("dhnorm", 0, 5), 
+                                                                           type = "fixed",
+                                                                           rank.preference = ifelse(input$small == "bad", "lower", "higher")))
+                                        
+                                        rv$jags_model_re <- jags_model_re
+                                        rv$jags_model_fe <- jags_model_fe
+                                } else {  # Continuous data
+                                        jags_data <- list(
+                                                Outcomes = rv$data$y,
+                                                SE = rv$data$sd / sqrt(rv$data$n),
+                                                Treat = factor(rv$data$t),
+                                                Study = rv$data$study,
+                                                trt_order = trt_order
+                                        )
+                                        jags_model_re <- with(jags_data, 
+                                                              network.data(Outcomes = Outcomes, 
+                                                                           Study = Study, 
+                                                                           Treat = Treat, 
+                                                                           SE = SE, 
+                                                                           Treat.order = trt_order,
+                                                                           response = "normal", 
+                                                                           type = "random",
+                                                                           rank.preference = ifelse(input$small == "bad", "lower", "higher")))
+                                        jags_model_fe <- with(jags_data, network.data(Outcomes = Outcomes, 
+                                                                                      Study = Study, 
+                                                                                      Treat = Treat, 
+                                                                                      SE = SE, 
+                                                                                      Treat.order = trt_order,
+                                                                                      response = "normal", 
+                                                                                      type = "fixed",
+                                                                                      rank.preference = ifelse(input$small == "bad", "lower", "higher")))
+                                        
+                                        rv$jags_model_re <- jags_model_re
+                                        rv$jags_model_fe <- jags_model_fe
+                                }
+                                
+                                incProgress(0.1, detail = "Initializing JAGS models")
+                                
+                                # Run JAGS for Random Effects
+                                jags_re <- network.run(jags_model_re, 
+                                                       n.run = input$niter)
+                                
+                                incProgress(0.2, detail = "Burning in Random Effects model")
+                                
+                                incProgress(0.3, detail = "Sampling from Random Effects model")
+                                
+                                # Run JAGS for Fixed Effects
+                                jags_fe <- network.run(jags_model_fe,
+                                                       n.run = input$niter)
+                                
+                                incProgress(0.6, detail = "Burning in Fixed Effects model")
+                                
+                                incProgress(0.7, detail = "Sampling from Fixed Effects model")
+                                
+                                
+                                incProgress(0.9, detail = "Finalizing results")
+                                
+                                rv$bayesian_results_re <- jags_re
+                                rv$bayesian_results_fe <- jags_fe
+                                
+                                # Show success message
+                                showNotification("Bayesian network meta-analysis completed successfully!", 
+                                                 type = "message", duration = 5)
+                                
+                        }, error = function(e) {
+                                # Print the full error message and stack trace
+                                print(paste("Error in Bayesian analysis:", e$message))
+                                print("Error traceback:")
+                                print(traceback())
+                                showNotification(paste("Error in Bayesian analysis:", e$message), 
+                                                 type = "error", duration = NULL)
+                        })
+                })
+        })
+        
+        # Bayesian Network Plot
+        output$bayesianNetworkPlot <- renderPlot({
+                req(rv$jags_model_re)
+                
+                draw.network.graph(rv$jags_model_re, label.dist = 0)
+        })
+        
+        # Bayesian Forest Plots
+        output$bayesianForestPlotFE <- renderPlot({
+                req(rv$bayesian_results_fe)
+                
+                network.forest.plot(rv$bayesian_results_fe, only.reference.treatment = T)
+                
+        })
+        
+        output$bayesianForestPlotRE <- renderPlot({
+                req(rv$bayesian_results_re)
+                
+                network.forest.plot(rv$bayesian_results_re, only.reference.treatment = T)
+        })
+        
+        # Bayesian Rankogram
+        output$bayesianRankogramRE = renderPlot({
+                req(rv$bayesian_results_re)
+                
+                network.rank.tx.plot(rv$bayesian_results_re)
+        })
+        
+        output$bayesianRankogramFE = renderPlot({
+                req(rv$bayesian_results_fe)
+                
+                network.rank.tx.plot(rv$bayesian_results_fe)
+        })
+        
+        # Bayesian League Tables
+        output$bayesianLeagueTableRE = renderDT({
+                req(rv$bayesian_results_re)
+                
+                t(relative.effects.table(rv$bayesian_results_re, summary_stat = "ci"))
+        })
+        
+        output$bayesianLeagueTableFE = renderDT({
+                req(rv$bayesian_results_fe)
+                
+                t(relative.effects.table(rv$bayesian_results_fe, summary_stat = "ci"))
+        })
+        
+        # Bayesian Net Heat Plots
+        output$bayesianNetHeatRE = renderPlot({
+                req(rv$bayesian_results_re)
+                tryCatch({
+                        # Create a correlation matrix from the MCMC samples
+                        samples = as.matrix(rv$bayesian_results_re)
+                        cor_matrix = cor(samples)
+                        
+                        # Plot heatmap
+                        heatmap(cor_matrix, Colv = NA, Rowv = NA, scale = "none",
+                                main = "Bayesian Random Effects Net Heat Plot",
+                                xlab = "Treatment", ylab = "Treatment")
+                }, error = function(e) {
+                        print(paste("Error in Bayesian random effects net heat plot:", e$message))
+                })
+        })
+        
+        output$bayesianNetHeatFE = renderPlot({
+                req(rv$bayesian_results_fe)
+                tryCatch({
+                        # Create a correlation matrix from the MCMC samples
+                        samples = as.matrix(rv$bayesian_results_fe)
+                        cor_matrix = cor(samples)
+                        
+                        # Plot heatmap
+                        heatmap(cor_matrix, Colv = NA, Rowv = NA, scale = "none",
+                                main = "Bayesian Fixed Effects Net Heat Plot",
+                                xlab = "Treatment", ylab = "Treatment")
+                }, error = function(e) {
+                        print(paste("Error in Bayesian fixed effects net heat plot:", e$message))
+                })
+        })
+        
         
         # RoB2
         output$rob_input = renderUI({

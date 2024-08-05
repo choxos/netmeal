@@ -5,8 +5,9 @@ account: choxos
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 12405182
-bundleId: 8944675
+bundleId: 8946999
 url: https://choxos.shinyapps.io/netmetal/
 version: 1
 asMultiple: FALSE
 asStatic: FALSE
+ignoredFiles: app2.R
